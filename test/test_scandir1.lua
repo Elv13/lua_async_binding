@@ -1,22 +1,29 @@
 
 local lgi  = require     'lgi'
-local Gio  = lgi.require 'Gio'
-local core = require     'lgi.core'
 local GLib = lgi.require 'GLib'
 
-require("libluabridge")
+local async = require "async"
 
 local main_loop = GLib.MainLoop()
 
-local cr = aio_scan_directory("/", "")
+-- Test if the number of folder matches
+local counter = 0
 
-request_connect(cr, "request::completed", function(signame)
-   print("COMPLETED!!!!", signame)
+async.directory.scan("/","")
+: connect_signal("request::completed", function(signame, var)
+
+   local counter2 = 0
+
+   for k,v in var:ipairs() do
+      print("MEH",k,v)
+      counter2 = counter2 + 1
+   end
+
+   os.exit(counter2 == counter and 0 or 1)
 end)
-
-
-request_connect(cr, "request::folder", function(signame)
-   print("FOLDER!!!!", signame)
+: connect_signal("request::folder", function(signame, var)
+   local v = var
+   counter = counter + 1
 end)
 
 print("Starting main loop")

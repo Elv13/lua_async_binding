@@ -103,7 +103,7 @@ emit_signal(request_t *r, const char *signal_name, GVariant *args, ...)
    printf("GVARTYPE %s\n",buffer);
 
    if (r->handler) {
-      r->handler(r, signal_name, NULL);
+      r->handler(r, signal_name, args);
    }
 }
 

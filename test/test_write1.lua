@@ -12,7 +12,10 @@ local cr = aio_file_write("/tmp/cat", "123", 3)
 
 request_connect(cr, "request::completed", function(signame)
    print("COMPLETED!!!!", signame)
+   os.exit(0)
 end)
+
+
 
 print("Starting main loop")
 

@@ -42,8 +42,10 @@ lua_request_handler(request_t* request_ptr, const char* signal_name, GVariant* v
          /* Push the arguments to the stack */
          lua_pushstring(lua_request->L, signal_name);
 
+         lua_pushlightuserdata(lua_request->L, var);
+
          /* Call the callback */
-         lua_call(lua_request->L,1,0); //TODO handle retvals
+         lua_call(lua_request->L,2,0); //TODO handle retvals
 
       }
 
