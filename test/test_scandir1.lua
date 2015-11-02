@@ -10,18 +10,17 @@ local main_loop = GLib.MainLoop()
 local counter = 0
 
 async.directory.scan("/","")
-: connect_signal("request::completed", function(signame, var)
-
+: connect_signal("request::completed", function(folder_list, extra)
    local counter2 = 0
 
-   for k,v in var:ipairs() do
+   for k,v in folder_list:ipairs() do
       print("MEH",k,v)
       counter2 = counter2 + 1
    end
 
    os.exit(counter2 == counter and 0 or 1)
 end)
-: connect_signal("request::folder", function(signame, var)
+: connect_signal("request::folder", function(var)
    local v = var
    counter = counter + 1
 end)

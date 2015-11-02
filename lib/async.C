@@ -14,7 +14,7 @@
 #include <functional>
 
 /* Constants */
-#define TUPLE_MAX_SIZE 64
+#define TUPLE_MAX_ARGS 12
 
 #define UNCANCELLABLE NULL
 #define NO_CALLBACK NULL
@@ -58,53 +58,52 @@ emit_signal(request_t *r, const char *signal_name, GVariant *args, ...)
    }
 
    /* Pack all arguments into a GVariant tuple */
-   char buffer[TUPLE_MAX_SIZE];
-   int buffer_pos = 1;
+   int i = 0;
 
-   buffer[0] = '(';
+   /* Increase TUPLE_MAX_ARGS if a new function with more args is added */
+   GVariant* vars[TUPLE_MAX_ARGS];
 
    va_list ap;
    va_start(ap, args);
    for (GVariant *v = args; v; v = va_arg(ap, GVariant*)) {
-      //TODO rebuild a GVariant tuple out of the va and send that to Lua
-      const auto type = g_variant_get_type_string(args);
+
+#if 0 /* Debug helper */
+      const auto type = g_variant_get_type_string(v);
 
       /* Some debug info */
       if (!strcmp(type, "s")) {
          gsize len = 0;
          printf("STRING ARG %s %s\n",
             signal_name,
-            g_variant_get_string(args, &len)
+            g_variant_get_string(v, &len)
          );
       }
       else if (type[0] == 'a') {
          printf("ARRAY ARG %s %d\n",
             signal_name,
-            (unsigned)g_variant_n_children(args)
+            (unsigned)g_variant_n_children(v)
          );
       }
+#endif
 
-      const int type_size = strlen(type);
-
-      /* It should not really happen */
-      if (buffer_pos + type_size > TUPLE_MAX_SIZE)
+      if (i == TUPLE_MAX_ARGS) {
+         printf("Too many arguments\n");
          break;
+      }
 
-      strcpy(buffer+buffer_pos, type/*, type_size*/);
-      buffer_pos += type_size;
+      /* Add the variant to the tuple */
+      vars[i++] = v;
 
    }
    va_end(ap);
-   //TODO undef the GVariant2
 
-   buffer[ buffer_pos     ] = ')' ;
-   buffer[ buffer_pos + 1 ] = '\0';
+   vars[i] = NULL;
 
-   printf("GVARTYPE %s\n",buffer);
+   /* Pack the tuple */
+   auto packed = g_variant_new_tuple(vars, i);
 
-   if (r->handler) {
-      r->handler(r, signal_name, args);
-   }
+   if (r->handler)
+      r->handler(r, signal_name, packed);
 }
 
 /**
@@ -194,7 +193,11 @@ aio_scan_directory(const char *path, const char *attributes)
                   }
 
                   auto folder_list = g_variant_builder_end (builder);
-                  emit_signal(r, "request::completed", folder_list, NULL);
+
+                  /*DEBUG ONLY*/
+                  auto test_arg = g_variant_new_string("cyborg bobcat");
+
+                  emit_signal(r, "request::completed", folder_list, test_arg,  NULL);
 
                   g_variant_builder_unref(builder);
 

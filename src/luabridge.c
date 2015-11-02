@@ -27,9 +27,9 @@ typedef struct {
 } lua_request_t;
 
 void
-lua_request_handler(request_t* request_ptr, const char* signal_name, GVariant* var)
+lua_request_handler(request_t* req, const char* signal_name, GVariant* var)
 {
-   lua_request_t *lua_request = (lua_request_t*) request_ptr->user_data;
+   lua_request_t *lua_request = (lua_request_t*) req->user_data;
    connection_t  *conn        = lua_request->first_connection;
 
    while (conn) {
