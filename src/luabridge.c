@@ -145,12 +145,11 @@ lua_aoi_load_file(lua_State *L)
 static int
 lua_aio_append_to_file(lua_State *L)
 {
-   const char* path       = lua_tostring(L, -3);
-   const char* content    = lua_tostring(L, -2);
-   const int   size       = lua_tonumber(L, -1);
-   lua_pop(L, 3);
+   const char* path       = lua_tostring(L, -2);
+   const char* content    = lua_tostring(L, -1);
+   lua_pop(L, 2);
 
-   request_t *r = aio_append_to_file(path, content, size);
+   request_t *r = aio_append_to_file(path, content, strlen(content));
    init_request(L, r);
 
    lua_pushlightuserdata(L, r);
@@ -161,12 +160,11 @@ lua_aio_append_to_file(lua_State *L)
 static int
 lua_aio_file_write(lua_State *L)
 {
-   const char* path       = lua_tostring(L, -3);
-   const char* content    = lua_tostring(L, -2);
-   const int   size       = lua_tonumber(L, -1);
-   lua_pop(L, 3);
+   const char* path       = lua_tostring(L, -2);
+   const char* content    = lua_tostring(L, -1);
+   lua_pop(L, 2);
 
-   request_t *r = aio_file_write(path, content, size);
+   request_t *r = aio_file_write(path, content, strlen(content));
    init_request(L, r);
 
    lua_pushlightuserdata(L, r);

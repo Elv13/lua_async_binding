@@ -1,21 +1,30 @@
-
 local lgi  = require     'lgi'
-local Gio  = lgi.require 'Gio'
-local core = require     'lgi.core'
 local GLib = lgi.require 'GLib'
 
-require("libluabridge")
+local async = require "async"
 
 local main_loop = GLib.MainLoop()
 
-local cr = aio_file_write("/tmp/cat", "123", 3)
+os.execute("rm -rf /tmp/asyncwrite")
 
-request_connect(cr, "request::completed", function(signame)
-   print("COMPLETED!!!!", signame)
-   os.exit(0)
+async.file.write("/tmp/asyncwrite", "test1234")
+: connect_signal("request::completed", function()
+
+   -- Test if the file content match
+   async.file.read("/tmp/asyncwrite")
+   : connect_signal("request::completed", function(content)
+      if content == "test1234" then
+         print("Content match")
+         os.execute("rm -rf /tmp/asyncwrite")
+         os.exit(0)
+      else
+         print("content mismatch")
+         os.execute("rm -rf /tmp/asyncwrite")
+         os.exit(1)
+      end
+   end)
+
 end)
-
-
 
 print("Starting main loop")
 

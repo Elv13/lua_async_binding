@@ -1,17 +1,14 @@
-
 local lgi  = require     'lgi'
-local Gio  = lgi.require 'Gio'
-local core = require     'lgi.core'
 local GLib = lgi.require 'GLib'
 
-require("libluabridge")
+local async = require "async"
 
 local main_loop = GLib.MainLoop()
 
-local cr = aoi_load_file("/tmp/cat", "123", 3)
-
-request_connect(cr, "request::completed", function(signame)
-   print("COMPLETED!!!!", signame)
+async.file.read("/etc/fstab")
+: connect_signal("request::completed", function(content)
+   print(content)
+   os.exit(0)
 end)
 
 print("Starting main loop")
