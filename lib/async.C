@@ -526,37 +526,36 @@ aio_icon_load(const char **names, int size, char is_symbolic)
    } request_info_t;
 
    auto ri = new request_info_t {is_symbolic, r, size};
-
    gtk_icon_info_load_icon_async(info,
       UNCANCELLABLE,
       CPP_G_ASYNC_CALLBACK(
          (GObject *obj, GAsyncResult *res, gpointer user_data) {
 
-               auto ri = (request_info_t*) user_data;
+            auto ri = (request_info_t*) user_data;
 
-               auto ffunc = //ri->symbolic ?
-                            //gtk_icon_info_load_symbolic_finish :
-                            gtk_icon_info_load_icon_finish     ;
+            auto ffunc = //ri->symbolic ?
+                           //gtk_icon_info_load_symbolic_finish :
+                           gtk_icon_info_load_icon_finish     ;
 
-               auto pixbuf = ffunc((GtkIconInfo*) obj, res, NULL);
+            auto pixbuf = ffunc((GtkIconInfo*) obj, res, NULL);
 
-               if (!pixbuf) {
-                  emit_signal(ri->request, "request::error", "Failed to obtain pixbuf");
-                  return;
-               }
+            if (!pixbuf) {
+               emit_signal(ri->request, "request::error", "Failed to obtain pixbuf");
+               return;
+            }
 
-               /* Convert to a cairo surface */
-               auto sur = cairo_image_surface_create(
-                  CAIRO_FORMAT_ARGB32,
-                  ri->size           ,
-                  ri->size
-               );
+            /* Convert to a cairo surface */
+            auto sur = cairo_image_surface_create(
+               CAIRO_FORMAT_ARGB32,
+               ri->size           ,
+               ri->size
+            );
 
-               auto cr = cairo_create(sur);
-               gdk_cairo_set_source_pixbuf(cr, pixbuf, 0, 0);
-               cairo_paint(cr);
+            auto cr = cairo_create(sur);
+            gdk_cairo_set_source_pixbuf(cr, pixbuf, 0, 0);
+            cairo_paint(cr);
 
-               //TODO find a way to wrap that into a GVariant
+            //TODO find a way to wrap that into a GVariant
          }
       ),
       ri /* Data */

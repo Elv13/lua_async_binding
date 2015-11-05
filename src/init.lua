@@ -2,7 +2,11 @@ local lgi  = require     'lgi'
 local core = require     'lgi.core'
 local GLib = lgi.require 'GLib'
 
-require("libluabridge")
+if not pcall(lgi.require 'Gtk') then
+   require("gears.async.libluabridge_gtk")
+else
+   require("gears.async.libluabridge")
+end
 
 local function connect_signal(request, signal_name, callback, cancelled_callback)
 
@@ -17,6 +21,16 @@ local function connect_signal(request, signal_name, callback, cancelled_callback
    return request
 end
 
+-- Dummy request when the native function is unavailable
+local function fallback()
+   local r = {
+      connect_signal = function() end
+   }
+   --TODO add a glib.idle request::error error message
+
+   return r
+end
+
 local dispatch = {
    directory = {
       scan           = aio_scan_directory,
@@ -27,6 +41,9 @@ local dispatch = {
       append         = aio_append_to_file,
       write          = aio_file_write    ,
    },
+   icon = {
+      load           = aio_load_icon      or fallback,
+   }
 }
 
 local function run(self, ...)

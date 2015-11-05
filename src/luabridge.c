@@ -172,6 +172,31 @@ lua_aio_file_write(lua_State *L)
    return 1;
 }
 
+#ifdef ENABLE_GTK
+
+static int
+lua_aio_load_icon(lua_State *L)
+{
+   const char *name     = lua_tostring (L, -3);
+   const int   size     = lua_tonumber (L, -2);
+   const int   symbolic = lua_toboolean(L, -1);
+
+   lua_pop(L, 3);
+
+   const char* names[2] = {NULL, NULL};
+
+   names[0] = name;
+
+   request_t *r = aio_icon_load(names, size, symbolic);
+   init_request(L, r);
+
+   lua_pushlightuserdata(L, r);
+
+   return 1;
+}
+
+#endif
+
 static int
 lua_request_connect(lua_State *L)
 {
@@ -238,7 +263,12 @@ lua_request_collect(lua_State* L)
 }
 
 LUALIB_API int
-luaopen_libluabridge(lua_State *L)
+
+#ifdef ENABLE_GTK
+luaopen_gears_async_libluabridge_gtk(lua_State *L)
+#else
+luaopen_gears_async_libluabridge(lua_State *L)
+#endif
 {
    /* Async I/O methods */
    lua_register(L, "aio_scan_directory" , lua_aio_scan_directory );
@@ -246,6 +276,10 @@ luaopen_libluabridge(lua_State *L)
    lua_register(L, "aoi_load_file"      , lua_aoi_load_file      );
    lua_register(L, "aio_append_to_file" , lua_aio_append_to_file );
    lua_register(L, "aio_file_write"     , lua_aio_file_write     );
+
+#ifdef ENABLE_GTK
+   lua_register(L, "aio_load_icon"      , lua_aio_load_icon      );
+#endif
 
    /* Request helper methods */
    lua_register(L, "request_connect"    , lua_request_connect    );

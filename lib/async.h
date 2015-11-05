@@ -31,6 +31,7 @@ request_t * aoi_load_file     (const char* path                                 
 request_t * aio_append_to_file(const char* path, const char* content, const unsigned size);
 request_t * aio_file_write    (const char* path, const char* content, const unsigned size);
 
+/* This is not an installed .h, so using #ifdef is fine */
 #ifdef ENABLE_GTK
 request_t* aio_icon_load(const char** names, int size, char is_symbolic);
 #endif
