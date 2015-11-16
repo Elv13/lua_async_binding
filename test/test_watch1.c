@@ -31,7 +31,7 @@ int delete_file(gpointer p)
    return 0;
 }
 
-void test_handler(void* r, const char* signal_name, GVariant* var)
+void test_handler(void* r, const char* signal_name, cairo_surface_t **sp, gpointer *gp, GVariant* var)
 {
    request_t* request = (request_t*) r;
 
@@ -48,7 +48,7 @@ int main(int argc, char** argv)
    GMainLoop* main_loop = g_main_loop_new (NULL, FALSE);
 
    request_t* r = aio_watch_gfile("/home/lepagee/", MON_DIRECTORY);
-   r->handler = test_handler;
+   r->ohandler  = test_handler;
 
    auto_timeout(10);
 

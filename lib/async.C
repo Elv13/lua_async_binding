@@ -29,8 +29,45 @@ gpointer)) ([]lambda)
 
 /* Private prototypes */
 void
-emit_signal(request_t *r, const char *signal_name, GVariant *args,...)
+emit_signal(request_t *r, const char *signal_name, GVariant *args, ...)
 G_GNUC_NULL_TERMINATED;
+void
+emit_signal_o(request_t *r, const char *signal_name, cairo_surface_t **surfaces,
+            GVariant *args, ...)
+G_GNUC_NULL_TERMINATED;
+
+/**
+ * Convert an elipsys into a GVariant dynamic tuple
+ * @param args The first elipsys element
+ * @param ap   The elipsys ... struct
+ * @return A packed GVariant tuple
+ */
+static GVariant *
+pack_vars(GVariant *args, va_list ap)
+{
+   /* Pack all arguments into a GVariant tuple */
+   int i = 0;
+
+   /* Increase TUPLE_MAX_ARGS if a new function with more args is added */
+   GVariant* vars[TUPLE_MAX_ARGS];
+
+   for (GVariant *v = args; v; v = va_arg(ap, GVariant*)) {
+      if (i == TUPLE_MAX_ARGS) {
+         printf("Too many arguments\n");
+         break;
+      }
+
+      /* Add the variant to the tuple */
+      vars[i++] = v;
+
+   }
+   va_end(ap);
+
+   vars[i] = NULL;
+
+   /* Pack the tuple */
+   return g_variant_new_tuple(vars, i);
+}
 
 /**
  * Emit a signal to the Lua request object
@@ -48,7 +85,7 @@ void
 emit_signal(request_t *r, const char *signal_name, GVariant *args, ...)
 {
    //TODO make sure the signal is not emitted if no listener are set
-//    if ((!r->handler) || (!r->listener_count)
+//    if ((!r->ohandler) || (!r->listener_count)
 //       return;
    //TODO ignore emit after an error, it will be garbage
 
@@ -57,53 +94,29 @@ emit_signal(request_t *r, const char *signal_name, GVariant *args, ...)
       printf("NO ARG %s\n",signal_name);
    }
 
-   /* Pack all arguments into a GVariant tuple */
-   int i = 0;
+   va_list ap;
+   va_start(ap, args);
 
-   /* Increase TUPLE_MAX_ARGS if a new function with more args is added */
-   GVariant* vars[TUPLE_MAX_ARGS];
+   auto packed = pack_vars(args, ap);
+
+   if (r->ohandler)
+      r->ohandler(r, signal_name, NULL, NULL, packed);
+}
+
+void
+emit_signal_o(request_t *r, const char *signal_name, cairo_surface_t **surfaces, GVariant *args, ...)
+{
+   if (!args) {
+      printf("NO ARG %s\n",signal_name);
+   }
 
    va_list ap;
    va_start(ap, args);
-   for (GVariant *v = args; v; v = va_arg(ap, GVariant*)) {
 
-#if 0 /* Debug helper */
-      const auto type = g_variant_get_type_string(v);
+   auto packed = pack_vars(args, ap);
 
-      /* Some debug info */
-      if (!strcmp(type, "s")) {
-         gsize len = 0;
-         printf("STRING ARG %s %s\n",
-            signal_name,
-            g_variant_get_string(v, &len)
-         );
-      }
-      else if (type[0] == 'a') {
-         printf("ARRAY ARG %s %d\n",
-            signal_name,
-            (unsigned)g_variant_n_children(v)
-         );
-      }
-#endif
-
-      if (i == TUPLE_MAX_ARGS) {
-         printf("Too many arguments\n");
-         break;
-      }
-
-      /* Add the variant to the tuple */
-      vars[i++] = v;
-
-   }
-   va_end(ap);
-
-   vars[i] = NULL;
-
-   /* Pack the tuple */
-   auto packed = g_variant_new_tuple(vars, i);
-
-   if (r->handler)
-      r->handler(r, signal_name, packed);
+   if (r->ohandler)
+      r->ohandler(r, signal_name, surfaces, NULL, packed);
 }
 
 /**
@@ -556,6 +569,10 @@ aio_icon_load(const char **names, int size, char is_symbolic)
             cairo_paint(cr);
 
             //TODO find a way to wrap that into a GVariant
+            static cairo_surface_t* surfaces[2];
+            surfaces[1] = NULL;
+            surfaces[0] = sur;
+            emit_signal_o(ri->request, "request::completed", surfaces, NULL, NULL);
          }
       ),
       ri /* Data */

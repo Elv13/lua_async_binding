@@ -1,6 +1,7 @@
-local lgi  = require     'lgi'
-local core = require     'lgi.core'
-local GLib = lgi.require 'GLib'
+local lgi   = require     'lgi'
+local core  = require     'lgi.core'
+local cairo = lgi.require 'cairo'
+local GLib  = lgi.require 'GLib'
 
 if not pcall(lgi.require 'Gtk') then
    require("gears.async.libluabridge_gtk")
@@ -10,9 +11,12 @@ end
 
 local function connect_signal(request, signal_name, callback, cancelled_callback)
 
-   request_connect(request._native, signal_name, function(signal_name, var)
+   request_connect(request._native, signal_name, function(signal_name, var, sur, obj)
       assert(type(var) == 'userdata')
-      callback(unpack(core.record.new(GLib.Variant, var, true).value))
+      if sur then
+         sur = cairo.Surface(sur, true)
+      end
+      callback(unpack(core.record.new(GLib.Variant, var, true).value), sur, obj)
    end)
 
    --TODO connect to the CAPI cancelled method

@@ -12,50 +12,72 @@
 
 /* A signal connection */
 typedef struct {
-   char                *signal_name;
-   int                 reference   ;
-   struct connection_t *next       ;
+   char                *signal_name; /* The signal name                    */
+   int                 reference   ; /* The lua stack index of the cllback */
+   struct connection_t *next       ; /* The next connection                */
 } connection_t;
 
 /* A request C <-> Lua binder */
 typedef struct {
-   connection_t *first_connection;
-   connection_t *last_connection ;
-   lua_State    *L               ;
-   gboolean     is_completed     ;
+   connection_t *first_connection; /* The chained list first element        */
+   connection_t *last_connection ; /* The chained list last element         */
+   lua_State    *L               ; /* The lua context used for the request  */
+   gboolean     is_completed     ; /* If request::completed has been emited */
 
 } lua_request_t;
 
 void
-lua_request_handler(request_t* req, const char* signal_name, GVariant* var)
+helper_check_completion(lua_request_t *lrequest, const char *signal_name)
+{
+   /* If the request if completed, assume it is ready for GC */
+   if (!strcmp(signal_name, "request::completed"))
+      lrequest->is_completed = TRUE;
+}
+
+void
+lua_request_handler_object(
+   struct request_t *req        ,
+   const char       *signal_name,
+   cairo_surface_t **surfaces   ,
+   gpointer         *objects    ,
+   GVariant         *var
+)
 {
    lua_request_t *lua_request = (lua_request_t*) req->user_data;
    connection_t  *conn        = lua_request->first_connection;
+   unsigned       counter     = 0;
 
-   while (conn) {
+   for (;conn ; conn = (connection_t*) conn->next) {
 
-      if (!strcmp(signal_name, conn->signal_name)) {
+      if (!strcmp(signal_name, conn->signal_name)) { //TODO stop using char* as signal
 
          /* Restore the callback to the top of the stack */
          lua_rawgeti(lua_request->L, LUA_REGISTRYINDEX, conn->reference);
 
-         /* Push the arguments to the stack */
+         /* Push the signal name for debug purpose */
          lua_pushstring(lua_request->L, signal_name);
 
+         /* Push the arguments to the stack */
          lua_pushlightuserdata(lua_request->L, var);
 
+         /* Push all surfaces */
+         for (; surfaces && *surfaces; ++counter && surfaces++)
+            lua_pushlightuserdata(lua_request->L, *surfaces);
+
+         //TODO pack all surfaces and objects into arrays
+
+         /* Push a gobjects */
+         for (; objects && *objects; ++counter && objects++)
+            lua_pushlightuserdata(lua_request->L, *objects);
+
          /* Call the callback */
-         lua_call(lua_request->L,2,0); //TODO handle retvals
+         lua_call(lua_request->L, counter + 2,0); //TODO handle retvals
 
       }
 
-      conn = (connection_t*) conn->next;
    }
 
-   /* If the request if completed, assume it is ready for GC */
-   if (!strcmp(signal_name, "request::completed"))
-      lua_request->is_completed = TRUE;
-
+   helper_check_completion(lua_request, signal_name);
 }
 
 void
@@ -69,7 +91,7 @@ init_request(lua_State *L, request_t *request)
    lua_request->is_completed     = FALSE;
 
    request->user_data = lua_request;
-   request->handler   = lua_request_handler;
+   request->ohandler  = lua_request_handler_object;
 }
 
 void
@@ -77,7 +99,7 @@ destroy_request(const request_t* request)
 {
    lua_request_t *lua_request = (lua_request_t*) request->user_data;
    connection_t  *conn        = lua_request->first_connection;
-   connection_t  * last_conn  = NULL;
+   connection_t  *last_conn   = NULL;
 
    while (conn) {
 
@@ -220,8 +242,8 @@ lua_request_connect(lua_State *L)
    lua_pop(L, 2);
 
    /* Create the binder */
-   lua_request_t* lr  = (lua_request_t*) r->user_data;
-   connection_t* conn = (connection_t*) malloc(sizeof(connection_t));
+   lua_request_t* lr  = (lua_request_t *) r->user_data;
+   connection_t* conn = (connection_t  *) malloc(sizeof(connection_t));
    conn->next         = NULL;
    conn->reference    = callback_ref;
    conn->signal_name  = (char*) malloc(strlen(signal) * sizeof(char));

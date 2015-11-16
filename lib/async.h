@@ -2,6 +2,7 @@
 #define LIBASYNC
 
 #include <glib-2.0/glib.h>
+#include <cairo/cairo.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -12,7 +13,16 @@ extern "C" {
  */
 typedef struct request_t
 {
-   void (*handler)(struct request_t *request_ptr, const char* signal_name, GVariant* var);
+
+   /* Alternative syntax used to push raw cairo_surface_t and gpointer */
+   void (*ohandler)(
+      struct request_t *request_ptr, /* Request object                        */
+      const char       *signal_name, /* The signal name                       */ //TODO
+      cairo_surface_t **surfaces   , /* A NULL terminated list of surfaces    */
+      gpointer         *objects    , /* A NULL terminated list of GObjects    */
+      GVariant         *var          /* A packed GVariant tuple with all args */
+   );
+
    int listener_count;
    void *user_data;
    //TODO a list of error handler to delete
@@ -25,11 +35,20 @@ typedef enum {
 } MonitoringType;
 
 /* Methodes */
-request_t * aio_scan_directory(const char *path, const char* attributes                  );
-request_t * aio_watch_gfile   (const char* path, MonitoringType t                        );
-request_t * aoi_load_file     (const char* path                                          );
-request_t * aio_append_to_file(const char* path, const char* content, const unsigned size);
-request_t * aio_file_write    (const char* path, const char* content, const unsigned size);
+request_t *
+aio_scan_directory(const char *path, const char* attributes                  );
+
+request_t *
+aio_watch_gfile   (const char* path, MonitoringType t                        );
+
+request_t *
+aoi_load_file     (const char* path                                          );
+
+request_t *
+aio_append_to_file(const char* path, const char* content, const unsigned size);
+
+request_t *
+aio_file_write    (const char* path, const char* content, const unsigned size);
 
 /* This is not an installed .h, so using #ifdef is fine */
 #ifdef ENABLE_GTK
