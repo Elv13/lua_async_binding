@@ -8,12 +8,25 @@ local main_loop = GLib.MainLoop()
 -- Test if the number of folder matches
 local counter = 0
 
-async.directory.scan("/", nil)
+-- This script test if file attributes are correctly loaded with the same type
+
+async.directory.scan("/etc",{
+   "standard::name"     , --string
+   "owner::user"        , --string
+})
 : connect_signal("request::completed", function(folder_list, extra)
    local counter2 = 0
 
+   print("TYPE", folder_list:get_type_string(), #folder_list)
+
    for k,v in folder_list:ipairs() do
-      print("MEH",k,v)
+      print(v["standard::name"].value, v["owner::user"].value)
+
+      for k2,v2 in pairs(v) do
+         print("ELEMENT", k2,v2)
+      end
+      --TODO check types
+      --TODO check if the thumbnail exist if is_valie == true
       counter2 = counter2 + 1
    end
 

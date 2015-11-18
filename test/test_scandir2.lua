@@ -8,12 +8,26 @@ local main_loop = GLib.MainLoop()
 -- Test if the number of folder matches
 local counter = 0
 
-async.directory.scan("/", nil)
+-- This script test if file attributes are correctly loaded with different types
+
+async.directory.scan("/etc",{
+   "standard::name"     , --string
+   "standard::icon"     , --cairo surface
+   "thumbnail::path"    , --string
+   "thumbnail::failed"  , --boolean
+   "thumbnail::is-valid", --boolean
+   "owner::user"        , --string
+})
 : connect_signal("request::completed", function(folder_list, extra)
    local counter2 = 0
 
    for k,v in folder_list:ipairs() do
-      print("MEH",k,v)
+--       for k2,v2 in v:pairs() do
+--          print("HERE",k2,v2)
+--       end
+      print("MEH",k,v.value)
+      --TODO check types
+      --TODO check if the thumbnail exist if is_valie == true
       counter2 = counter2 + 1
    end
 

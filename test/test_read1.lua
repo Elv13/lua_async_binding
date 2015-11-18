@@ -5,6 +5,8 @@ local async = require "async"
 
 local main_loop = GLib.MainLoop()
 
+-- This script test if a file content can be loaded
+
 async.file.read("/etc/fstab")
 : connect_signal("request::completed", function(content)
    print(content)

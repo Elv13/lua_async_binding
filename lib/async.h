@@ -29,6 +29,20 @@ typedef struct request_t
    //TODO a destructor
 } request_t;
 
+/**
+ * A linked list node of Gio file attributes name. This will be used to
+ * convert it back into something Lua can handle
+ */
+typedef struct attributes_list_t
+{
+   char                     *name     ; /* The attribute name (with ::)     */
+   short                     length   ; /* Attribute name length            */
+   short                     height   ; /* The pixmap height (if required)  */
+   short                     width    ; /* The pixmap width  (if required)  */
+   gboolean                  is_pixmap; /* If the attribute is a GDK pixmap */
+   struct attributes_list_t *next     ; /* The next attribute               */
+} attributes_list_t;
+
 typedef enum {
    MON_FILE,
    MON_DIRECTORY
@@ -36,23 +50,24 @@ typedef enum {
 
 /* Methodes */
 request_t *
-aio_scan_directory(const char *path, const char* attributes                  );
+aio_scan_directory(const char *path, attributes_list_t *attributes           );
 
 request_t *
-aio_watch_gfile   (const char* path, MonitoringType t                        );
+aio_watch_gfile   (const char *path, MonitoringType t                        );
 
 request_t *
-aoi_load_file     (const char* path                                          );
+aoi_load_file     (const char *path                                          );
 
 request_t *
-aio_append_to_file(const char* path, const char* content, const unsigned size);
+aio_append_to_file(const char *path, const char *content, const unsigned size);
 
 request_t *
-aio_file_write    (const char* path, const char* content, const unsigned size);
+aio_file_write    (const char *path, const char *content, const unsigned size);
 
 /* This is not an installed .h, so using #ifdef is fine */
 #ifdef ENABLE_GTK
-request_t* aio_icon_load(const char** names, int size, char is_symbolic);
+request_t *
+aio_icon_load(const char **names, int size, char is_symbolic);
 #endif
 
 

@@ -130,22 +130,216 @@ emit_signal(request_t *r, const char *signal_name, const char *message)
 }
 
 /**
+ * Convert an attributes_list_t into a string
+ *
+ * @param attributes A linked list of attributes
+ * @return A CSV formatted list of attributes (by name)
+ *
+ * @warning A single buffer is shared, mutex are required for multi thread use
+ */
+char *
+helper_format_attributes(attributes_list_t *attributes)
+{
+   /* Store the parsed attributes into a buffer */
+   static char buffer[4096] = {'\0'};
+   int         buffer_pos   = 0     ;
+
+   /* Add each attributes to the buffer delimited by a ',' */
+   for (; attributes; attributes = attributes->next) {
+
+      /* In practice, this should happen unless attributes are used more than*/
+      /* once or new attributes are invented. In that case, blame the user   */
+      if (buffer_pos > 4096) {
+         printf("Maximum attributes exeeded\n");
+         buffer[buffer_pos - 1] = '\0';
+      }
+
+      strcpy(buffer + buffer_pos, attributes->name);
+
+      buffer[buffer_pos + attributes->length] = ',';
+
+      buffer_pos += attributes->length + 1;
+   }
+
+   /* Terminate the string */
+   buffer[buffer_pos == 0 ? 0 : buffer_pos - 1] = '\0';
+
+   return buffer;
+}
+
+/**
+ * Extract attributes information out of the file descriptor
+ *
+ * If a single attributes is requested, this function returns it.
+ * If multiple ones are, then they are packed into a map with the
+ * attribute name as key and output as value
+ *
+ * @param file_info The file descriptor
+ * @param attributes The attributes to query
+ * @return the value packed as a GVariant or an a{sv} array of values
+ */
+GVariant *
+helper_extract_attributes(
+   GFileInfo *info,
+   attributes_list_t *attributes,
+   char **type
+)
+{
+   const auto is_list = attributes->next != NULL;
+
+   static char default_mixed_type[] = "a{sv}";
+
+   /* For now, assume "aav" is the most optimal option for multi formet */
+   *type         = is_list ? default_mixed_type : NULL;
+   auto is_mixed = FALSE; //TODO use it
+
+   //TODO handle the case where all attrs are the same type
+
+
+   auto builder = is_list ?
+      g_variant_builder_new(g_variant_type_new(*type))
+      : NULL;
+
+   for (; attributes; attributes = attributes->next) {
+
+      //TODO parse attributes, this code isn't valid
+      auto attr_type = g_file_info_get_attribute_type(
+         info, attributes->name
+      );
+
+      GVariant *ret = NULL;
+
+      //TODO make sure the mixed type detection run only once per request
+
+#define CHECK_MIXED(var_type) \
+      *type = (*type) ?: (char*) var_type; \
+      is_mixed = strcmp(*type, var_type);\
+
+#define CREATE_VAR(t, var_type) \
+   ret = g_variant_new_##t(\
+      g_file_info_get_attribute_##t(info, attributes->name)\
+   );\
+   CHECK_MIXED(var_type)\
+break;
+      switch(attr_type) {
+         /* Handle the basic types */
+         case G_FILE_ATTRIBUTE_TYPE_STRING      : CREATE_VAR( string  , "s")
+         case G_FILE_ATTRIBUTE_TYPE_BOOLEAN     : CREATE_VAR( boolean , "b")
+         case G_FILE_ATTRIBUTE_TYPE_UINT32      : CREATE_VAR( uint32  , "u")
+         case G_FILE_ATTRIBUTE_TYPE_INT32       : CREATE_VAR( int32   , "i")
+         case G_FILE_ATTRIBUTE_TYPE_UINT64      : CREATE_VAR( uint64  , "u")
+         case G_FILE_ATTRIBUTE_TYPE_INT64       : CREATE_VAR( int64   , "i")
+
+         /* Handle the more complex types */
+         case G_FILE_ATTRIBUTE_TYPE_INVALID     :
+            ret = g_variant_new_string("");
+            break;
+         case G_FILE_ATTRIBUTE_TYPE_BYTE_STRING :
+            CHECK_MIXED("s")
+            ret = g_variant_new_string(
+               g_file_info_get_attribute_as_string(
+                  info, G_FILE_ATTRIBUTE_STANDARD_NAME
+               )
+            );
+            break;
+            break;
+         case G_FILE_ATTRIBUTE_TYPE_OBJECT      :
+            //g_file_info_get_attribute_data
+            if (attributes->is_pixmap) {
+#ifdef ENABLE_GTK
+            //TODO if the attributes is a pixmap, convert it to cairo_surface_t
+#endif
+            }
+            else {
+               /* I guess each relevant types need to be processed manually */
+               /*CREATE_VAR(object)*/
+            }
+            break;
+         case G_FILE_ATTRIBUTE_TYPE_STRINGV     :
+            /*CREATE_VAR(stringv)*/ //TODO
+            break;
+      }
+#undef CREATE_VAR
+
+      ret = ret ?: g_variant_new_string(
+         "" //TODO use binary for this
+      );
+
+      if (builder) {
+         g_variant_builder_add(
+            builder,
+            "{sv}",
+            attributes->name,
+            g_variant_new_variant(ret),
+            NULL
+         );
+      }
+      else
+         return ret;
+
+   }
+
+   return builder ? g_variant_builder_end(builder) : g_variant_new_variant(
+      g_variant_new_string("")
+   );
+}
+
+/**
+ * If the attributes are not defined, act as the "ls" command and return file
+ * name without path
+ *
+ * @return A default attribute list
+ */
+attributes_list_t *
+helper_default_attributes()
+{
+   static int length = strlen( G_FILE_ATTRIBUTE_STANDARD_NAME );
+
+   attributes_list_t *node = (attributes_list_t *) malloc(
+      sizeof(attributes_list_t)
+   );
+
+   node->is_pixmap = FALSE;
+   node->length    = length;
+   node->next      = NULL;
+   node->name      = (char *) malloc( (length + 1) * sizeof(char) );
+
+
+   strcpy(node->name, G_FILE_ATTRIBUTE_STANDARD_NAME);
+
+   return node;
+}
+
+/**
  * List elements in a directory
  * @param path The directory path
  * @param attributes, a comma separated list of arguments
  *
  * @see https://developer.gnome.org/gio/stable/gio-GFileAttribute.html
+ * @see https://developer.gnome.org/gio/stable/GFileInfo.html
+ *
+ * @todo Add a new argument (optional) argument for icon/thumb size
+ * @todo Add a new argument to check if icon/thumb need to be converted
+ * @todo free the attributes memory
  */
 request_t *
-aio_scan_directory(const char *path, const char *attributes)
+aio_scan_directory(const char *path, attributes_list_t *attributes)
 {
-   auto f = g_file_new_for_path(path);
-   auto r = new request_t {NULL, 0};
 
-   const auto attr = attributes ?: G_FILE_ATTRIBUTE_STANDARD_NAME;
+   auto f = g_file_new_for_path(path);
+   auto r = new request_t {NULL, 0, NULL};
+
+   const auto attr = attributes ?: helper_default_attributes();
+
+   typedef struct {
+      request_t         *request   ;
+      attributes_list_t *attributes;
+   } scan_dir_data_t;
+
+   auto data = new scan_dir_data_t { r, attr };
 
    g_file_enumerate_children_async(f,
-      attr                          , /* File attributes                      */
+      helper_format_attributes(attr), /* File attributes                      */
       G_FILE_QUERY_INFO_NONE        , /* Flags                                */
       G_PRIORITY_DEFAULT            , /* Priority                             */
       UNCANCELLABLE                 , /* Cancellable                          */
@@ -154,7 +348,7 @@ aio_scan_directory(const char *path, const char *attributes)
             (GFile*)obj, res, NULL
          );
 
-         auto r = (request_t*) usr_dt;
+         auto data = (scan_dir_data_t*) usr_dt;
 
          g_file_enumerator_next_files_async(content,
             99999             , /* Maximum number of file HACK */
@@ -162,55 +356,57 @@ aio_scan_directory(const char *path, const char *attributes)
             UNCANCELLABLE     , /* Cancellable                 */
             CPP_G_ASYNC_CALLBACK(
                (GObject *obj, GAsyncResult *res, gpointer user_data) {
+
                   auto all_files = g_file_enumerator_next_files_finish(
                      (GFileEnumerator *) obj, res, NULL
                   );
 
-                  auto r = (request_t*) user_data;
+                  auto data = (scan_dir_data_t*) user_data;
 
-                  static auto string_array = g_variant_type_new("as");
-
-                  auto builder = g_variant_builder_new(string_array);
+                  GVariantBuilder *builder = NULL;
 
                   for (auto l = all_files; l; l = l->next) {
 
                      auto file_info = (GFileInfo*) l->data;
 
-                     //TODO parse attributes, this code isn't valid
-                     auto attr_type = g_file_info_get_attribute_type(
-                        file_info, G_FILE_ATTRIBUTE_STANDARD_NAME
+                     char* type = NULL;
+
+                     /* Get the attributes */
+                     auto var = helper_extract_attributes(
+                        file_info       ,
+                        data->attributes,
+                        &type
                      );
 
-                     //TODO if more than 1 attribute, pack them into 
-                     //a string-GVariant dictionary
+                     /* Now that the final type is known, create the builder */
+                     if (!builder) {
+                        char buffer2[32];
+                        sprintf(buffer2, "a%s\0", type);
 
-                     /* Not all attributes are strings */
-                     if (attr_type == G_FILE_ATTRIBUTE_TYPE_OBJECT)
-                        printf("IS OBJECT\n"); //TODO do something about it
-                     else if (attr_type == G_FILE_ATTRIBUTE_TYPE_STRING
-                        || attr_type == G_FILE_ATTRIBUTE_TYPE_BYTE_STRING) {
+                        auto var_type = g_variant_type_new(buffer2);
 
-                        auto name = g_variant_new_string(
-                           g_file_info_get_attribute_as_string(
-                              file_info, G_FILE_ATTRIBUTE_STANDARD_NAME
-                           )
-                        );
-
-                        emit_signal(r, "request::folder", name, NULL);
-
-                        //TODO use "a{av}" if there is multiple attributes
-                        g_variant_builder_add_value(builder, name);
+                        builder = g_variant_builder_new(var_type);
                      }
-                     // do something with l->data
+
+                     g_variant_builder_add_value(builder, var);
+
+                     emit_signal(data->request, "request::folder", var, NULL);
+
                      g_object_unref(file_info);
+
                   }
+
 
                   auto folder_list = g_variant_builder_end (builder);
 
                   /*DEBUG ONLY*/
                   auto test_arg = g_variant_new_string("cyborg bobcat");
 
-                  emit_signal(r, "request::completed", folder_list, test_arg,  NULL);
+                  emit_signal(data->request, "request::completed",
+                     folder_list ,
+                     test_arg    , //TODO remove
+                     NULL
+                  );
 
                   g_variant_builder_unref(builder);
 
@@ -219,16 +415,16 @@ aio_scan_directory(const char *path, const char *attributes)
                      G_PRIORITY_DEFAULT, /* Priority    */
                      UNCANCELLABLE     , /* Cancellable */
                      NO_CALLBACK       , /* Callback    */
-                     r                   /* Data        */
+                     data                /* Data        */
                   );
                }
             ),
-            r
+            data
          );
 
          //TODO emit error if !content
       }),
-      r /* Data */
+      data /* Data */
    );
 
    g_object_unref(f);
@@ -238,19 +434,19 @@ aio_scan_directory(const char *path, const char *attributes)
 
 /**
  * Watch for changes in a file or directory
- * 
+ *
  * @param path The file or directory path
  * @param if it is a file or a directory
- * 
+ *
  * @todo auto detect parameter 2
- * 
+ *
  * @note This function is unreliable, it may not work on all platforms and may
  * require GVFS to be running.
  */
 request_t *
 aio_watch_gfile(const char *path, MonitoringType t)
 {
-   auto r = new request_t {NULL, 0};
+   auto r = new request_t {NULL, 0, NULL};
 
    auto file = g_file_new_for_path(path);
 
@@ -280,8 +476,6 @@ aio_watch_gfile(const char *path, MonitoringType t)
       gpointer user_data
    ) {
       auto r = (request_t*) user_data;
-
-      printf("GET CALLED\n");
 
       switch (type) {
          case G_FILE_MONITOR_EVENT_CHANGED           :
@@ -326,7 +520,7 @@ request_t *
 aoi_load_file(const char *path)
 {
    auto file = g_file_new_for_path(path);
-   auto r    = new request_t {NULL, 0};
+   auto r    = new request_t {NULL, 0, NULL};
 
    g_file_load_contents_async(file,
       UNCANCELLABLE,
@@ -374,7 +568,7 @@ aio_stream_write(
    unsigned      size
 )
 {
-   auto r = new request_t {NULL, 0};
+   auto r = new request_t {NULL, 0, NULL};
 
    g_output_stream_write_async((GOutputStream*)stream,
       content           ,
@@ -410,7 +604,7 @@ aio_append_to_file(
    const unsigned size
 )
 {
-   auto r    = new request_t {NULL, 0};
+   auto r    = new request_t {NULL, 0, NULL};
    auto file = g_file_new_for_path(path);
 
    /* Captured lambdas cannot be converted to G_CALLBACK */
@@ -462,7 +656,7 @@ aio_file_write(
    const unsigned size
 )
 {
-   auto r    = new request_t {NULL, 0};
+   auto r    = new request_t {NULL, 0, NULL};
    auto file = g_file_new_for_path(path);
 
    g_file_replace_contents_async(file,
@@ -506,7 +700,7 @@ aio_file_write(
 request_t *
 aio_icon_load(const char **names, int size, char is_symbolic)
 {
-   auto r = new request_t {NULL, 0};
+   auto r = new request_t {NULL, 0, NULL};
 
    //TODO it is possible to get a theme per screen (why???)
    static GtkIconTheme *theme = gtk_icon_theme_get_default();
