@@ -53,6 +53,9 @@ request_t *
 aio_scan_directory(const char *path, attributes_list_t *attributes           );
 
 request_t *
+aio_file_info     (const char *path, attributes_list_t *attributes           );
+
+request_t *
 aio_watch_gfile   (const char *path, MonitoringType t                        );
 
 request_t *

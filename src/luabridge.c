@@ -119,24 +119,9 @@ destroy_request(const request_t *request)
    free(lua_request);
 }
 
-static int
-lua_aio_scan_directory(lua_State *L)
+attributes_list_t *
+helper_parse_attributes(lua_State *L, int index)
 {
-   if (!(
-      lua_isstring  (L, -2) &&
-      ( lua_type(L, -1) == LUA_TTABLE || lua_isnil(L, -1) )
-      //TODO handle if attributes are a single string without ','
-   )) {
-      printf("Invalid arguments"); //TODO use luaL_typerror
-      return 0;
-   }
-
-   /* Discards extra arguments */
-   lua_settop(L, 2); //TODO add for all other methods
-   //TODO handle if the arg is missing
-
-   const char *path      = lua_tostring(L, -2);
-
    /* Store the parsed attributes into a linked list */
    attributes_list_t *first_node = NULL;
    attributes_list_t *last_node  = NULL;
@@ -147,7 +132,6 @@ lua_aio_scan_directory(lua_State *L)
 
       lua_pushnil(L); /* Move the table to -2 */
 
-      //TODO move that into an helper function
       while(lua_next(L, -2)) {
          if(lua_isstring(L, -1)) {
 
@@ -184,9 +168,62 @@ lua_aio_scan_directory(lua_State *L)
       lua_pop(L, 1);
    }
 
+   return first_node;
+}
+
+static int
+lua_aio_scan_directory(lua_State *L)
+{
+   if (!(
+      lua_isstring  (L, -2) &&
+      ( lua_type(L, -1) == LUA_TTABLE || lua_isnil(L, -1) )
+      //TODO handle if attributes are a single string without ','
+   )) {
+      printf("Invalid arguments"); //TODO use luaL_typerror
+      return 0;
+   }
+
+   /* Discards extra arguments */
+   lua_settop(L, 2); //TODO add for all other methods
+   //TODO handle if the arg is missing
+
+   const char *path      = lua_tostring(L, -2);
+
+   attributes_list_t *first_node = helper_parse_attributes(L, -1);
+
    lua_pop(L, 2);
 
    request_t *r = aio_scan_directory(path, first_node);
+   init_request(L, r);
+
+   lua_pushlightuserdata(L, r);
+
+   return 1;
+}
+
+static int
+lua_aio_file_info(lua_State *L)
+{
+   if (!(
+      lua_isstring  (L, -2) &&
+      ( lua_type(L, -1) == LUA_TTABLE || lua_isnil(L, -1) )
+      //TODO handle if attributes are a single string without ','
+   )) {
+      printf("Invalid arguments"); //TODO use luaL_typerror
+      return 0;
+   }
+
+   /* Discards extra arguments */
+   lua_settop(L, 2); //TODO add for all other methods
+   //TODO handle if the arg is missing
+
+   const char *path      = lua_tostring(L, -2);
+
+   attributes_list_t *first_node = helper_parse_attributes(L, -1);
+
+   lua_pop(L, 2);
+
+   request_t *r = aio_file_info(path, first_node);
    init_request(L, r);
 
    lua_pushlightuserdata(L, r);
@@ -353,6 +390,7 @@ luaopen_gears_async_libluabridge(lua_State *L)
 {
    /* Async I/O methods */
    lua_register(L, "aio_scan_directory" , lua_aio_scan_directory );
+   lua_register(L, "aio_file_info"      , lua_aio_file_info      );
    lua_register(L, "aio_watch_gfile"    , lua_aio_watch_gfile    );
    lua_register(L, "aoi_load_file"      , lua_aoi_load_file      );
    lua_register(L, "aio_append_to_file" , lua_aio_append_to_file );

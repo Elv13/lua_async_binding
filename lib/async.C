@@ -432,6 +432,51 @@ aio_scan_directory(const char *path, attributes_list_t *attributes)
    return r;
 }
 
+request_t *
+aio_file_info(const char *path, attributes_list_t *attributes)
+{
+   auto f = g_file_new_for_path(path);
+   auto r = new request_t {NULL, 0, NULL};
+
+   const auto attr = attributes ?: helper_default_attributes();
+
+   typedef struct {
+      request_t         *request   ;
+      attributes_list_t *attributes;
+   } file_info_data_t;
+
+   auto data = new file_info_data_t { r, attr };
+
+   g_file_query_info_async (f,
+      helper_format_attributes(attr),
+      G_FILE_QUERY_INFO_NONE        ,
+      G_PRIORITY_DEFAULT            ,
+      UNCANCELLABLE                 ,
+      CPP_G_ASYNC_CALLBACK(
+         (GObject *obj, GAsyncResult *res, gpointer user_data) {
+            auto info = g_file_query_info_finish(
+               (GFile *) obj, res, NULL
+            );
+
+            auto data = (file_info_data_t*) user_data;
+
+            char* type = NULL;
+
+            /* Get the attributes */
+            auto var = helper_extract_attributes(
+               info            ,
+               data->attributes,
+               &type
+            );
+
+            emit_signal(data->request, "request::completed", var, NULL);
+         }
+      ),
+      data);
+
+   return r;
+}
+
 /**
  * Watch for changes in a file or directory
  *
