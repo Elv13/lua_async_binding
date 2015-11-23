@@ -35,7 +35,7 @@ typedef struct request_t
  */
 typedef struct attributes_list_t
 {
-   char                     *name     ; /* The attribute name (with ::)     */
+   const char               *name     ; /* The attribute name (with ::)     */
    short                     length   ; /* Attribute name length            */
    short                     height   ; /* The pixmap height (if required)  */
    short                     width    ; /* The pixmap width  (if required)  */
@@ -59,7 +59,10 @@ request_t *
 aio_watch_gfile   (const char *path, MonitoringType t                        );
 
 request_t *
-aoi_load_file     (const char *path                                          );
+aio_load_file     (const char *path                                          );
+
+request_t *
+aio_file_icon     (const char *path, int size, gboolean is_symbolic          );
 
 request_t *
 aio_append_to_file(const char *path, const char *content, const unsigned size);

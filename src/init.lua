@@ -45,6 +45,7 @@ local dispatch = {
       append         = aio_append_to_file,
       write          = aio_file_write    ,
       info           = aio_file_info     ,
+      icon           = aio_file_icon     ,
    },
    icon = {
       load           = aio_load_icon      or fallback,

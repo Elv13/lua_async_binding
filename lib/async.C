@@ -27,13 +27,16 @@ gpointer)) ([]lambda)
 #define CPP_G_MONITOR_CALLBACK(lambda) (void(*)(GFileMonitor*, GFile*, GFile*\
 , GFileMonitorEvent, gpointer)) ([]lambda)
 
+#define CPP_O_HANDLER(lambda) (void(*)(struct request_t* r, const char* signal_name,\
+cairo_surface_t **sp, gpointer *gp, GVariant* var)) ([]lambda)
+
 /* Private prototypes */
 void
 emit_signal(request_t *r, const char *signal_name, GVariant *args, ...)
 G_GNUC_NULL_TERMINATED;
 void
 emit_signal_o(request_t *r, const char *signal_name, cairo_surface_t **surfaces,
-            GVariant *args, ...)
+            gpointer *objects, GVariant *args, ...)
 G_GNUC_NULL_TERMINATED;
 
 /**
@@ -104,7 +107,7 @@ emit_signal(request_t *r, const char *signal_name, GVariant *args, ...)
 }
 
 void
-emit_signal_o(request_t *r, const char *signal_name, cairo_surface_t **surfaces, GVariant *args, ...)
+emit_signal_o(request_t *r, const char *signal_name, cairo_surface_t **surfaces, gpointer *objects, GVariant *args, ...)
 {
    if (!args) {
       printf("NO ARG %s\n",signal_name);
@@ -116,7 +119,7 @@ emit_signal_o(request_t *r, const char *signal_name, cairo_surface_t **surfaces,
    auto packed = pack_vars(args, ap);
 
    if (r->ohandler)
-      r->ohandler(r, signal_name, surfaces, NULL, packed);
+      r->ohandler(r, signal_name, surfaces, objects, packed);
 }
 
 /**
@@ -166,6 +169,83 @@ helper_format_attributes(attributes_list_t *attributes)
 
    return buffer;
 }
+
+#ifdef ENABLE_GTK
+
+void
+helper_icon_load_async(request_t* r, GtkIconInfo *info, int size, bool is_symb)
+{
+   /* Information to complete the request */
+   typedef struct {
+      gboolean   symbolic ;
+      request_t  *request ;
+      int        size     ;
+   } request_info_t;
+
+   auto ri = new request_info_t {is_symb, r, size};
+   gtk_icon_info_load_icon_async(info,
+      UNCANCELLABLE,
+      CPP_G_ASYNC_CALLBACK(
+         (GObject *obj, GAsyncResult *res, gpointer user_data) {
+
+            auto ri = (request_info_t*) user_data;
+
+            auto ffunc = //ri->symbolic ?
+                           //gtk_icon_info_load_symbolic_finish :
+                           gtk_icon_info_load_icon_finish     ;
+
+            auto pixbuf = ffunc((GtkIconInfo*) obj, res, NULL);
+
+            if (!pixbuf) {
+               emit_signal(ri->request, "request::error", "Failed to obtain pixbuf");
+               return;
+            }
+
+            /* Convert to a cairo surface */
+            auto sur = cairo_image_surface_create(
+               CAIRO_FORMAT_ARGB32,
+               ri->size           ,
+               ri->size
+            );
+
+            auto cr = cairo_create(sur);
+            gdk_cairo_set_source_pixbuf(cr, pixbuf, 0, 0);
+            cairo_paint(cr);
+
+            //TODO find a way to wrap that into a GVariant
+            static cairo_surface_t* surfaces[2];
+            surfaces[1] = NULL;
+            surfaces[0] = sur;
+            emit_signal_o(ri->request, "request::completed", surfaces, NULL, NULL, NULL);
+         }
+      ),
+      ri /* Data */
+   );
+}
+
+void
+helper_gicon_loader(request_t *r, GIcon *icon, int size, gboolean is_symbolic)
+{
+
+   //TODO it is possible to get a theme per screen (why???)
+   static GtkIconTheme *theme = gtk_icon_theme_get_default();
+
+   if (!theme) {
+      //TODO use glib idle or the receiver wont get the signal
+      emit_signal(r, "request::error", "Load the default icon theme failed");
+      return;
+   }
+
+   auto info = gtk_icon_theme_lookup_by_gicon(
+      theme,
+      icon,
+      size,
+      (GtkIconLookupFlags) 0
+   );
+
+   helper_icon_load_async(r, info, size, is_symbolic);
+}
+#endif
 
 /**
  * Extract attributes information out of the file descriptor
@@ -244,16 +324,7 @@ break;
             break;
             break;
          case G_FILE_ATTRIBUTE_TYPE_OBJECT      :
-            //g_file_info_get_attribute_data
-            if (attributes->is_pixmap) {
-#ifdef ENABLE_GTK
-            //TODO if the attributes is a pixmap, convert it to cairo_surface_t
-#endif
-            }
-            else {
-               /* I guess each relevant types need to be processed manually */
-               /*CREATE_VAR(object)*/
-            }
+            /* Those case are better handled in specialized methods */
             break;
          case G_FILE_ATTRIBUTE_TYPE_STRINGV     :
             /*CREATE_VAR(stringv)*/ //TODO
@@ -305,7 +376,7 @@ helper_default_attributes()
    node->name      = (char *) malloc( (length + 1) * sizeof(char) );
 
 
-   strcpy(node->name, G_FILE_ATTRIBUTE_STANDARD_NAME);
+   strcpy( (char*) node->name, G_FILE_ATTRIBUTE_STANDARD_NAME);
 
    return node;
 }
@@ -469,7 +540,11 @@ aio_file_info(const char *path, attributes_list_t *attributes)
                &type
             );
 
-            emit_signal(data->request, "request::completed", var, NULL);
+            gpointer objects[2];
+            objects[0] = info;
+            objects[1] = NULL;
+
+            emit_signal_o(data->request, "request::completed", NULL, objects, var, NULL);
          }
       ),
       data);
@@ -562,7 +637,7 @@ aio_watch_gfile(const char *path, MonitoringType t)
  * @param path The file path
  */
 request_t *
-aoi_load_file(const char *path)
+aio_load_file(const char *path)
 {
    auto file = g_file_new_for_path(path);
    auto r    = new request_t {NULL, 0, NULL};
@@ -657,8 +732,8 @@ aio_append_to_file(
       const char *content;
       gsize      size    ;
       request_t  *request;
-   } aoi_append_t;
-   auto string = new aoi_append_t { content, size, r };
+   } aio_append_t;
+   auto string = new aio_append_t { content, size, r };
 
    /* Setup and create the write stream */
    g_file_append_to_async(file,
@@ -669,7 +744,7 @@ aio_append_to_file(
          (GObject *obj, GAsyncResult *res, gpointer user_data) {
             auto stream = g_file_append_to_finish((GFile*) obj, res, NULL);
 
-            aoi_append_t *string = (aoi_append_t*) user_data;
+            aio_append_t *string = (aio_append_t*) user_data;
 
             /* Write the content into the stream */
             aio_stream_write(
@@ -770,52 +845,79 @@ aio_icon_load(const char **names, int size, char is_symbolic)
 //                 gtk_icon_info_load_symbolic_async  :
 //                 gtk_icon_info_load_async           ;
 
-   /* Information to complete the request */
+   helper_icon_load_async(r, info, size, false);
+
+   return r;
+}
+
+request_t *
+aio_file_icon(const char *path, int size, gboolean is_symbolic)
+{
+   auto r = new request_t {NULL, 0, NULL};
+
+   auto node = new attributes_list_t;
+
+   static GtkIconTheme *theme = gtk_icon_theme_get_default();
+
+   static auto sym_length = strlen( "standard::symbolic-icon" );
+   static auto nor_length = strlen( "standard::icon"          );
+
+   node->length = is_symbolic ? sym_length : nor_length;
+   node->next   = NULL;
+   node->name   = is_symbolic ? "standard::symbolic-icon"
+   : "standard::icon";
+
+   request_t *file_info_request = aio_file_info(path, node);
+
    typedef struct {
-      gboolean   symbolic ;
-      request_t  *request ;
-      int        size     ;
-   } request_info_t;
+      int         size       ;
+      gboolean    is_symbolic;
+      const char *attr_name  ;
+      request_t  *request    ;
+   } aio_file_icon_t;
 
-   auto ri = new request_info_t {is_symbolic, r, size};
-   gtk_icon_info_load_icon_async(info,
-      UNCANCELLABLE,
-      CPP_G_ASYNC_CALLBACK(
-         (GObject *obj, GAsyncResult *res, gpointer user_data) {
+   file_info_request->user_data = new aio_file_icon_t {
+      size, is_symbolic, node->name, r
+   };
 
-            auto ri = (request_info_t*) user_data;
+   /* First, get the file info */
+   file_info_request->ohandler = CPP_O_HANDLER((
+      struct request_t *file_info_req,
+      const char       *signal_name  ,
+      cairo_surface_t **sp           ,
+      gpointer         *gp           ,
+      GVariant         *var
+   ) {
+      if (!strcmp(signal_name, "request::completed")) {
 
-            auto ffunc = //ri->symbolic ?
-                           //gtk_icon_info_load_symbolic_finish :
-                           gtk_icon_info_load_icon_finish     ;
+         auto info = (GFileInfo*) gp[0];
 
-            auto pixbuf = ffunc((GtkIconInfo*) obj, res, NULL);
+         auto data = (aio_file_icon_t*) file_info_req->user_data;
 
-            if (!pixbuf) {
-               emit_signal(ri->request, "request::error", "Failed to obtain pixbuf");
-               return;
-            }
+         auto attr_type = g_file_info_get_attribute_type(
+            info, data->attr_name
+         );
 
-            /* Convert to a cairo surface */
-            auto sur = cairo_image_surface_create(
-               CAIRO_FORMAT_ARGB32,
-               ri->size           ,
-               ri->size
+         /* Convert the attribute into a GtkIconInfo */
+         if (attr_type != G_FILE_ATTRIBUTE_TYPE_OBJECT) {
+            emit_signal(data->request, "request::error",
+               "Invalid attribute type"
             );
-
-            auto cr = cairo_create(sur);
-            gdk_cairo_set_source_pixbuf(cr, pixbuf, 0, 0);
-            cairo_paint(cr);
-
-            //TODO find a way to wrap that into a GVariant
-            static cairo_surface_t* surfaces[2];
-            surfaces[1] = NULL;
-            surfaces[0] = sur;
-            emit_signal_o(ri->request, "request::completed", surfaces, NULL, NULL);
+            return;
          }
-      ),
-      ri /* Data */
-   );
+
+         GObject *obj = g_file_info_get_attribute_object(
+            info, data->attr_name
+         );
+
+         auto icon = (GIcon*) obj;
+
+         /* Use the shared code path with the XDG icon request */
+         helper_gicon_loader(
+            data->request, icon, data->size, data->is_symbolic
+         );
+      }
+   });
 
    return r;
 }

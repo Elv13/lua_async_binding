@@ -21,7 +21,7 @@ int main(int argc, char** argv)
 {
    GMainLoop* main_loop = g_main_loop_new (NULL, FALSE);
 
-   request_t* r = aoi_load_file("/tmp/meh/two");
+   request_t* r = aio_load_file("/tmp/meh/two");
    r->ohandler  = test_handler;
 
    auto_timeout(10);

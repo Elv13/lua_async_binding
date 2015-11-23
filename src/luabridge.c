@@ -13,7 +13,7 @@
 /* A signal connection */
 typedef struct {
    char                *signal_name; /* The signal name                    */
-   int                 reference   ; /* The lua stack index of the cllback */
+   int                  reference  ; /* The lua stack index of the cllback */
    struct connection_t *next       ; /* The next connection                */
 } connection_t;
 
@@ -22,7 +22,7 @@ typedef struct {
    connection_t *first_connection; /* The chained list first element        */
    connection_t *last_connection ; /* The chained list last element         */
    lua_State    *L               ; /* The lua context used for the request  */
-   gboolean     is_completed     ; /* If request::completed has been emited */
+   gboolean      is_completed    ; /* If request::completed has been emited */
 } lua_request_t;
 
 void
@@ -129,7 +129,6 @@ helper_parse_attributes(lua_State *L, int index)
    /* Iterate the attributes (if any) and convert them to CSV */
    if ( ! lua_isnil(L, -1) ) {
 
-
       lua_pushnil(L); /* Move the table to -2 */
 
       while(lua_next(L, -2)) {
@@ -142,12 +141,13 @@ helper_parse_attributes(lua_State *L, int index)
                sizeof(attributes_list_t)
             );
 
-            node->length    = strlen(i);
-            node->next      = NULL;
-            node->name      = (char *) malloc((length + 1) * sizeof(char));
+            node->length = strlen(i);
+            node->next   = NULL;
+            node->name   = (char *) malloc((length + 1) * sizeof(char));
 
             /* Check if the attribute need further request processing */
-            node->is_pixmap = !strcmp(i, "FILE_ATTRIBUTE_STANDARD_ICON");
+            node->is_pixmap = (!strcmp(i, "standard::symbolic-icon")) ||
+               (!strcmp(i, "standard::icon"));
             //TODO handle width/height
 
             /* Copy the name into the buffer as Lua own the memory */
@@ -187,7 +187,7 @@ lua_aio_scan_directory(lua_State *L)
    lua_settop(L, 2); //TODO add for all other methods
    //TODO handle if the arg is missing
 
-   const char *path      = lua_tostring(L, -2);
+   const char *path = lua_tostring(L, -2);
 
    attributes_list_t *first_node = helper_parse_attributes(L, -1);
 
@@ -247,12 +247,12 @@ lua_aio_watch_gfile(lua_State *L)
 }
 
 static int
-lua_aoi_load_file(lua_State *L)
+lua_aio_load_file(lua_State *L)
 {
    const char *path = lua_tostring(L, -1);
    lua_pop(L, 1);
 
-   request_t *r = aoi_load_file(path);
+   request_t *r = aio_load_file(path);
    init_request(L, r);
 
    lua_pushlightuserdata(L, r);
@@ -306,6 +306,23 @@ lua_aio_load_icon(lua_State *L)
    names[0] = name;
 
    request_t *r = aio_icon_load(names, size, symbolic);
+   init_request(L, r);
+
+   lua_pushlightuserdata(L, r);
+
+   return 1;
+}
+
+static int
+lua_aio_file_icon(lua_State *L)
+{
+   const char *path     = lua_tostring (L, -3);
+   const int   size     = lua_tonumber (L, -2);
+   const int   symbolic = lua_toboolean(L, -1);
+
+   lua_pop(L, 3);
+
+   request_t *r = aio_file_icon(path, size, symbolic);
    init_request(L, r);
 
    lua_pushlightuserdata(L, r);
@@ -392,12 +409,13 @@ luaopen_gears_async_libluabridge(lua_State *L)
    lua_register(L, "aio_scan_directory" , lua_aio_scan_directory );
    lua_register(L, "aio_file_info"      , lua_aio_file_info      );
    lua_register(L, "aio_watch_gfile"    , lua_aio_watch_gfile    );
-   lua_register(L, "aoi_load_file"      , lua_aoi_load_file      );
+   lua_register(L, "aio_load_file"      , lua_aio_load_file      );
    lua_register(L, "aio_append_to_file" , lua_aio_append_to_file );
    lua_register(L, "aio_file_write"     , lua_aio_file_write     );
 
 #ifdef ENABLE_GTK
    lua_register(L, "aio_load_icon"      , lua_aio_load_icon      );
+   lua_register(L, "aio_file_icon"      , lua_aio_file_icon      );
 #endif
 
    /* Request helper methods */
